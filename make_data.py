@@ -65,6 +65,7 @@ def _driving_force(v: jnp.ndarray, v_target: jnp.ndarray, p: SimParams) -> jnp.n
 def _semi_implicit_euler(x: jnp.ndarray, v: jnp.ndarray, a: jnp.ndarray, p: SimParams):
     v_next = v + p.dt * a
     x_next = x + p.dt * v_next
+    print("hello?")
     return x_next, v_next
 
 
@@ -253,13 +254,13 @@ if __name__ == "__main__":
         A=8.0, B=1.2, d0=0.7, r_cut=0.0,
         tau=0.5, sigma=0.0,
         dt=0.05, mass=1.0,
-        x_left=-10.0, x_right=10.0,
-        y_min=-5.0, y_max=5.0,
+        x_left=-5.0, x_right=5.0,
+        y_min=-1.0, y_max=1.0,
         jitter_xy=5.0,
         v_target_mag=1.4, v_target_rel_jitter=0.15
     )
-    T = 300
-    num_left, num_right = 100, 100
+    T = 50
+    num_left, num_right = 2, 2
     seed = 123
 
     # Generate
@@ -272,7 +273,7 @@ if __name__ == "__main__":
     )
 
     # Save NPZ
-    save_dataset_npz("pedestrians.npz", positions, velocities, dt=p.dt)
+    #save_dataset_npz("pedestrians.npz", positions, velocities, dt=p.dt)
     jnp.save("v_star.npy", v_star)
     # Render animation (MP4 if ffmpeg, else GIF)
     render_animation_mp4_or_gif(

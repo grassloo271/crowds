@@ -65,7 +65,6 @@ def _driving_force(v: jnp.ndarray, v_target: jnp.ndarray, p: SimParams) -> jnp.n
 def _semi_implicit_euler(x: jnp.ndarray, v: jnp.ndarray, a: jnp.ndarray, p: SimParams):
     v_next = v + p.dt * a
     x_next = x + p.dt * v_next
-    print("hello?")
     return x_next, v_next
 
 
@@ -106,11 +105,59 @@ def _init_positions_vels(key, num_left: int, num_right: int, p: SimParams):
     speed_left  = p.v_target_mag * (1.0 + rel * (jax.random.uniform(ks1, (num_left,)) - 0.5) * 2.0)
     speed_right = p.v_target_mag * (1.0 + rel * (jax.random.uniform(ks2, (num_right,)) - 0.5) * 2.0)
 
-    v_star_left  = jnp.stack([ speed_left, jnp.zeros_like(speed_left)], axis=-1)   # +x
+    v_star_left  = jnp.stack([ 0.7 * speed_left, 0.7 * speed_left], axis=-1)   # +x
+#    v_star_left  = jnp.stack([ speed_left, jnp.zeros_like(speed_left)], axis=-1)   # +x
     v_star_right = jnp.stack([-speed_right, jnp.zeros_like(speed_right)], axis=-1) # -x
     v_star = jnp.concatenate([v_star_left, v_star_right], axis=0)
 
     return x0, v0, v_star
+
+def generate_group_with_destination(*, num_left: int, num_right: int, dest: jnp.array, T: int, seed: int = 0, params: Optional[SimParams] = None):
+    """
+    Returns:
+      positions:  [T, N, 2] (jnp)
+      velocities: [T, N, 2] (jnp)
+    """
+    p = params or SimParams()
+    assert T >= 2, "Need T >= 2 for next-step targets."
+
+    key = jax.random.key(seed)
+    key, k_init, k_scan = jax.random.split(key, 3)
+
+    x0, v0, v_star = _init_positions_vels(k_init, num_left, num_right, p)
+
+    def scan_body(carry, rng):
+        return _step_destination(carry, rng, dest, p)
+
+    keys = jax.random.split(k_scan, T - 1)
+    (xT, vT), (xs, vs) = jax.lax.scan(scan_body, (x0, v0), keys)
+
+    positions = jnp.concatenate([x0[None, ...], xs], axis=0)
+    velocities = jnp.concatenate([v0[None, ...], vs], axis=0)
+    return positions, velocities, p, v_star
+
+def _driving_force_dest(x: jnp.ndarray, v: jnp.ndarray, dest, p: SimParams) -> jnp.ndarray:
+    diff = dest - x
+    norms = jnp.linalg.norm(diff, axis=1, keepdims=True)
+    v_target = p.v_target_mag * diff / norms
+    print(((v_target - v) / p.tau).shape)
+    return (v_target - v) / p.tau
+
+def _step_destination(carry, rng, dest, p: SimParams):
+    x, v = carry
+    F_rep = _pairwise_repulsion(x, p)
+    F_drv = _driving_force_dest(x, v, dest, p)
+    F_tot = F_rep + F_drv
+    if p.sigma > 0.0:
+        rng, k_noise = jax.random.split(rng)
+        noise = jax.random.normal(k_noise, v.shape) * (p.sigma / jnp.sqrt(p.mass)) * jnp.sqrt(p.dt)
+    else:
+        noise = jnp.zeros_like(v)
+
+    a = (F_tot / p.mass) + noise
+    x_next, v_next = _semi_implicit_euler(x, v, a, p)
+    return (x_next, v_next), (x_next, v_next)
+
 
 
 def generate_two_group_dataset(*, num_left: int, num_right: int, T: int, seed: int = 0, params: Optional[SimParams] = None):
@@ -254,26 +301,27 @@ if __name__ == "__main__":
         A=8.0, B=1.2, d0=0.7, r_cut=0.0,
         tau=0.5, sigma=0.0,
         dt=0.05, mass=1.0,
-        x_left=-5.0, x_right=5.0,
-        y_min=-1.0, y_max=1.0,
+        x_left=-10.0, x_right=10.0,
+        y_min=-10.0, y_max=10.0,
         jitter_xy=5.0,
-        v_target_mag=1.4, v_target_rel_jitter=0.15
+        v_target_mag=1.9, v_target_rel_jitter=0.15
     )
-    T = 50
-    num_left, num_right = 2, 2
+    T = 200
+    num_left, num_right = 0, 100
     seed = 123
 
-    # Generate
-    positions, velocities, p, v_star = generate_two_group_dataset(
+    # Generat
+    positions, velocities, p, v_star = generate_group_with_destination(
         num_left=num_left,
         num_right=num_right,
         T=T,
+        dest = jnp.zeros([100,2]),
         seed=seed,
         params=params,
     )
-
-    # Save NPZ
-    #save_dataset_npz("pedestrians.npz", positions, velocities, dt=p.dt)
+    
+    #Save NPZ
+    save_dataset_npz("pedestrians.npz", positions, velocities, dt=p.dt)
     jnp.save("v_star.npy", v_star)
     # Render animation (MP4 if ffmpeg, else GIF)
     render_animation_mp4_or_gif(

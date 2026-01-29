@@ -3,6 +3,8 @@
 
 from dataclasses import dataclass
 from typing import Tuple, Optional
+from typing import TypedDict
+from typing import List
 
 import jax
 import jax.numpy as jnp
@@ -84,6 +86,29 @@ def _step(carry, rng, v_target, p: SimParams):
     x_next, v_next = _semi_implicit_euler(x, v, a, p)
     return (x_next, v_next), (x_next, v_next)
 
+def generate_two_group_dataset(*, num_left: int, num_right: int, T: int, seed: int = 0, params: Optional[SimParams] = None):
+    """
+    Returns:
+      positions:  [T, N, 2] (jnp)
+      velocities: [T, N, 2] (jnp)
+    """
+    p = params or SimParams()
+    assert T >= 2, "Need T >= 2 for next-step targets."
+
+    key = jax.random.key(seed)
+    key, k_init, k_scan = jax.random.split(key, 3)
+
+    x0, v0, v_star = _init_positions_vels(k_init, num_left, num_right, p)
+
+    def scan_body(carry, rng):
+        return _step(carry, rng, v_star, p)
+
+    keys = jax.random.split(k_scan, T - 1)
+    (xT, vT), (xs, vs) = jax.lax.scan(scan_body, (x0, v0), keys)
+
+    positions = jnp.concatenate([x0[None, ...], xs], axis=0)
+    velocities = jnp.concatenate([v0[None, ...], vs], axis=0)
+    return positions, velocities, p, v_star
 
 def _init_positions_vels(key, num_left: int, num_right: int, p: SimParams):
     N = num_left + num_right
@@ -112,7 +137,14 @@ def _init_positions_vels(key, num_left: int, num_right: int, p: SimParams):
 
     return x0, v0, v_star
 
-def generate_group_with_destination(*, num_left: int, num_right: int, dest: jnp.array, T: int, seed: int = 0, params: Optional[SimParams] = None):
+#___________________________ Destination People _____________________________-
+class Group(TypedDict):
+    num: int
+    dest: jnp.array
+    start: jnp.array
+    dist: float
+
+def generate_group_with_destination(*, specs: List[Group], T: int, seed: int = 0, params: Optional[SimParams] = None):
     """
     Returns:
       positions:  [T, N, 2] (jnp)
@@ -124,7 +156,13 @@ def generate_group_with_destination(*, num_left: int, num_right: int, dest: jnp.
     key = jax.random.key(seed)
     key, k_init, k_scan = jax.random.split(key, 3)
 
-    x0, v0, v_star = _init_positions_vels(k_init, num_left, num_right, p)
+    x0, v0, v_star = _init_positions_vels_dest(k_init, specs, p)
+
+    dest = jnp.array([[0,0]])
+    for gp in specs:
+        dest_new = jnp.ones((gp["num"], 1)) * gp["dest"] 
+        dest = jnp.concatenate([dest, dest_new])
+        dest = dest[1:]
 
     def scan_body(carry, rng):
         return _step_destination(carry, rng, dest, p)
@@ -140,7 +178,6 @@ def _driving_force_dest(x: jnp.ndarray, v: jnp.ndarray, dest, p: SimParams) -> j
     diff = dest - x
     norms = jnp.linalg.norm(diff, axis=1, keepdims=True)
     v_target = p.v_target_mag * diff / norms
-    print(((v_target - v) / p.tau).shape)
     return (v_target - v) / p.tau
 
 def _step_destination(carry, rng, dest, p: SimParams):
@@ -158,32 +195,24 @@ def _step_destination(carry, rng, dest, p: SimParams):
     x_next, v_next = _semi_implicit_euler(x, v, a, p)
     return (x_next, v_next), (x_next, v_next)
 
+def _init_positions_vels_dest(key, specs: List[Group], p: SimParams):
+    #specs is a list of lists where each list is a separate set of people
+    # specs is given as {num people: int, destination: jnp.array, start: jnp.array, dist: int}
+    # where people will be scattered randomly around the starting location 
 
-
-def generate_two_group_dataset(*, num_left: int, num_right: int, T: int, seed: int = 0, params: Optional[SimParams] = None):
-    """
-    Returns:
-      positions:  [T, N, 2] (jnp)
-      velocities: [T, N, 2] (jnp)
-    """
-    p = params or SimParams()
-    assert T >= 2, "Need T >= 2 for next-step targets."
-
-    key = jax.random.key(seed)
-    key, k_init, k_scan = jax.random.split(key, 3)
-
-    x0, v0, v_star = _init_positions_vels(k_init, num_left, num_right, p)
-
-    def scan_body(carry, rng):
-        return _step(carry, rng, v_star, p)
-
-    keys = jax.random.split(k_scan, T - 1)
-    (xT, vT), (xs, vs) = jax.lax.scan(scan_body, (x0, v0), keys)
-
-    positions = jnp.concatenate([x0[None, ...], xs], axis=0)
-    velocities = jnp.concatenate([v0[None, ...], vs], axis=0)
-    return positions, velocities, p, v_star
-
+    key, kL, kR = jax.random.split(key, 3)
+    v_total = jnp.array([[0,0]])
+    x_total = jnp.array([[0,0]])
+    for group in specs:
+        group: Group
+        y = jax.random.uniform(kL, (group["num"]), minval = group["start"][1] - group["dist"], maxval= group["start"][1] + group["dist"])
+        x = jax.random.uniform(kR, (group["num"],), minval= group["start"][0] - group["dist"], maxval= group["start"][0] + group["dist"])
+        xy = jnp.stack([x,y], axis = -1)
+        x_total = jnp.concatenate([x_total, xy], axis=0)           # [N,2]
+        v_total = jnp.concatenate([v_total, jnp.zeros_like(xy)])
+    x_total = x_total[1:]
+    v_total = v_total[1:]
+    return x_total, v_total, v_total
 
 # ----------------------------- Export: NPZ + Animation -----------------------------
 
@@ -312,10 +341,8 @@ if __name__ == "__main__":
 
     # Generat
     positions, velocities, p, v_star = generate_group_with_destination(
-        num_left=num_left,
-        num_right=num_right,
+        specs= [{"num":100, "start": jnp.array([3,3]), "dist": 2, "dest": jnp.array([0,0])}],
         T=T,
-        dest = jnp.zeros([100,2]),
         seed=seed,
         params=params,
     )

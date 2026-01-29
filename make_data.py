@@ -162,7 +162,7 @@ def generate_group_with_destination(*, specs: List[Group], T: int, seed: int = 0
     for gp in specs:
         dest_new = jnp.ones((gp["num"], 1)) * gp["dest"] 
         dest = jnp.concatenate([dest, dest_new])
-        dest = dest[1:]
+    dest = dest[1:]
 
     def scan_body(carry, rng):
         return _step_destination(carry, rng, dest, p)
@@ -335,15 +335,14 @@ if __name__ == "__main__":
         jitter_xy=5.0,
         v_target_mag=1.9, v_target_rel_jitter=0.15
     )
-    T = 200
-    num_left, num_right = 0, 100
+    T = 300
+    num_left, num_right = 200, 100
     seed = 123
 
     # Generat
     positions, velocities, p, v_star = generate_group_with_destination(
-        specs= [{"num":100, "start": jnp.array([3,3]), "dist": 2, "dest": jnp.array([0,0])}
-                ,{"num":100, "start": jnp.array([0,30]), "dist": 2, "dest": jnp.array([4,4])}
-                
+        specs= [{"num":100, "start": jnp.array([30,30]), "dist": 5, "dest": jnp.array([0,0])}
+                ,{"num":100, "start": jnp.array([0,50]), "dist": 5, "dest": jnp.array([50,0])},{"num":100, "start": jnp.array([0,0]), "dist": 5, "dest": jnp.array([40,40])}
                 ],
         T=T,
         seed=seed,

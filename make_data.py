@@ -341,7 +341,10 @@ if __name__ == "__main__":
 
     # Generat
     positions, velocities, p, v_star = generate_group_with_destination(
-        specs= [{"num":100, "start": jnp.array([3,3]), "dist": 2, "dest": jnp.array([0,0])}],
+        specs= [{"num":100, "start": jnp.array([3,3]), "dist": 2, "dest": jnp.array([0,0])}
+                ,{"num":100, "start": jnp.array([0,30]), "dist": 2, "dest": jnp.array([4,4])}
+                
+                ],
         T=T,
         seed=seed,
         params=params,

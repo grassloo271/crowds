@@ -235,8 +235,8 @@ def render_animation_mp4_or_gif(
     out_path_mp4: str = "pedestrians.mp4",
     out_path_gif: str = "pedestrians.gif",
     fps: int = 30,
-    tail_len: int = 25,     # number of past frames to show as trails
-    s: int = 30,            # scatter point size
+    tail_len: int = 250,     # number of past frames to show as trails
+    s: int = 5,            # scatter point size
 ):
     """
     Try to render an MP4 (ffmpeg). If ffmpeg is unavailable, fall back to GIF (Pillow).
@@ -254,7 +254,8 @@ def render_animation_mp4_or_gif(
     ylim = (ymin - margin_y, ymax + margin_y)
 
     # Colors: left group (0..num_left-1) vs right group
-    colors = np.array(["tab:blue"] * num_left + ["tab:orange"] * num_right)
+    colors = np.array(["tab:blue"] * 10 + ["tab:green"] * 10 + ["tab:orange"] * 10)
+#    colors = np.array(["tab:blue"] * num_left + ["tab:orange"] * num_right)
 
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.set_aspect("equal", adjustable="box")
@@ -335,14 +336,15 @@ if __name__ == "__main__":
         jitter_xy=5.0,
         v_target_mag=1.9, v_target_rel_jitter=0.15
     )
-    T = 300
-    num_left, num_right = 200, 100
+    T = 700
+    num_left, num_right = 20, 10
     seed = 123
 
     # Generat
     positions, velocities, p, v_star = generate_group_with_destination(
-        specs= [{"num":100, "start": jnp.array([30,30]), "dist": 5, "dest": jnp.array([0,0])}
-                ,{"num":100, "start": jnp.array([0,50]), "dist": 5, "dest": jnp.array([50,0])},{"num":100, "start": jnp.array([0,0]), "dist": 5, "dest": jnp.array([40,40])}
+        specs= [{"num":10, "start": jnp.array([0,30]), "dist": 10, "dest": jnp.array([0,-30])}
+                ,{"num":10, "start": jnp.array([28,-15]), "dist": 10, "dest": jnp.array([-28,15])},
+                {"num":10, "start": jnp.array([-28,-15]), "dist": 10, "dest": jnp.array([28,15])}
                 ],
         T=T,
         seed=seed,

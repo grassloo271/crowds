@@ -52,8 +52,8 @@ def project(x: jnp.array, v_rel: jnp.array, v_goal=None):
         v_rel = v_goal
 
     v_dir = v_rel / jnp.linalg.norm(v_rel)
-    x_parallel = jnp.dot(v_dir, x)[:, None] * v_dir 
+    x_parallel = jnp.dot(x, v_dir)[:, None] * v_dir 
     x_perp = x - x_parallel
     return x_parallel, x_perp
 
-project()
+

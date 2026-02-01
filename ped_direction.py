@@ -4,6 +4,7 @@ import jax.numpy as jnp
 
 class params:
     dt: float = 0.1
+    del_t: float = 1
 
 def semi_implicit_euler(x: jnp.ndarray, speed:jnp.ndarray, theta:jnp.ndarray, a:jnp.ndarray, alpha: jnp.ndarray, p: params):
     speed_next = speed + a * p.dt 
@@ -34,6 +35,25 @@ def generate_data(x0, speed0, theta0, T, p):
     return xs
 
 path = generate_data(jnp.array([[0.0,0.0], [1,1]]), jnp.array([1.0,2]), jnp.array([1.0,3]), 80, params)
+# Helbing model - attempt
 
-plt.plot(path[:,:,0], path[:,:,1])
-plt.show()
+def hel_force(x: jnp.array, speed: jnp.array, theta: jnp.array, p: params):
+    diff = x[:, None, :] - x[None, :, :]
+    D = jnp.linalg.norm(diff, axis=-1, keepdims=True)
+
+    vel = speed[:, None] * jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=-1) 
+    a1 = diff - vel[None, :, :] * p.del_t
+    a1_norm = jnp.linalg.norm(a1, axis=-1, keepdims=True)
+    b = 0.5 * jnp.sqrt((jnp.reshape(D + a1_norm, [2,2])) ** 2 - (p.del_t * speed[None, :] )** 2)
+    return b
+
+def project(x: jnp.array, v_rel: jnp.array, v_goal=None):
+    if jnp.linalg.norm(v_rel) == 0:
+        v_rel = v_goal
+
+    v_dir = v_rel / jnp.linalg.norm(v_rel)
+    x_parallel = jnp.dot(v_dir, x)[:, None] * v_dir 
+    x_perp = x - x_parallel
+    return x_parallel, x_perp
+
+project()

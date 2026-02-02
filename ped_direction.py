@@ -4,7 +4,9 @@ import jax.numpy as jnp
 
 class params:
     dt: float = 0.1
+    V_0: float = 2.1
     del_t: float = 1
+    sigma: float = 0.3
 
 def semi_implicit_euler(x: jnp.ndarray, speed:jnp.ndarray, theta:jnp.ndarray, a:jnp.ndarray, alpha: jnp.ndarray, p: params):
     speed_next = speed + a * p.dt 
@@ -34,18 +36,7 @@ def generate_data(x0, speed0, theta0, T, p):
     (xT, vT, thetaT), (xs, vs, thetas) = jax.lax.scan(scan_body, (x0, speed0, theta0), jnp.zeros(T))
     return xs
 
-path = generate_data(jnp.array([[0.0,0.0], [1,1]]), jnp.array([1.0,2]), jnp.array([1.0,3]), 80, params)
-# Helbing model - attempt
-
-def hel_force(x: jnp.array, speed: jnp.array, theta: jnp.array, p: params):
-    diff = x[:, None, :] - x[None, :, :]
-    D = jnp.linalg.norm(diff, axis=-1, keepdims=True)
-
-    vel = speed[:, None] * jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=-1) 
-    a1 = diff - vel[None, :, :] * p.del_t
-    a1_norm = jnp.linalg.norm(a1, axis=-1, keepdims=True)
-    b = 0.5 * jnp.sqrt((jnp.reshape(D + a1_norm, [2,2])) ** 2 - (p.del_t * speed[None, :] )** 2)
-    return b
+#----------------------------Helbing model------------------------------- 
 
 def project(x: jnp.array, v_rel: jnp.array, v_goal=None):
     if jnp.linalg.norm(v_rel) == 0:
@@ -56,4 +47,21 @@ def project(x: jnp.array, v_rel: jnp.array, v_goal=None):
     x_perp = x - x_parallel
     return x_parallel, x_perp
 
+def hel_force(x: jnp.array, speed: jnp.array, theta: jnp.array, p: params):
+    eps = 1e-6
+    diff = x[:, None, :] - x[None, :, :]
+    D = jnp.linalg.norm(diff, axis=-1, keepdims=True)
 
+    vel = speed[:, None] * jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=-1) 
+    a1 = diff - vel[None, :, :] * p.del_t
+    a1_norm = jnp.linalg.norm(a1, axis=-1, keepdims=True)
+    b = 0.5 * jnp.sqrt((jnp.reshape(D + a1_norm, [2,2])) ** 2 - (p.del_t * speed[None, :] )** 2)
+
+    coeff = 1 / p.sigma * p.V_0 * jnp.exp(-b / p.sigma) / (b + jnp.eye(jnp.shape(x)[0]))
+
+    diff_un = diff / (D + eps)
+    a1_un = a1 / (a1_norm + eps)
+
+    mask = ~jnp.eye(x.shape[0], dtype=bool)
+    direction = jnp.where(mask[:,:,None], a1_un + diff_un, jnp.zeros([x.shape[0],2]))
+    return coeff * direction

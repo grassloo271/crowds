@@ -2,34 +2,40 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from matplotlib import animation
 import numpy as np
+import jax 
+
+class params:
+    tau = 1
+    v_target_mag = 3
+    A: float = 5.0
+    B: float = 1.0
+    d0: float = 0.5
+    r_cut = 5
 
 # ================================================saving data=========================
-
 
 def people_to_npz(crowd, name):
     """
     Takes a list of people that you want to do something and
     puts them in a npz fiile for easier reading later on
     """
-    gen_arr = [(ppl.x, ppl.v, ppl.color, ppl.goal) for ppl in crowd]
-    x, v, color, goal = zip(*gen_arr)
+    gen_arr = [(ppl.x, ppl.v, ppl.color, ppl.goal, ppl.is_goal) for ppl in crowd]
+    x, v, color, goal, is_goal = zip(*gen_arr)
     np.savez(
         name,
         x=np.asarray(x),
         v=np.asarray(v),
         goal=np.asarray(goal),
+        is_goal = np.asarray(is_goal),
         color=np.asarray(color),
     )
-
-
 # ====================================rendering data==================================
-
 
 def render_animation_gif(
     npz_file_name,
     dt: float,
     fps: int = 30,
-    tail_len: int = 250,  # number of past frames to show as trails
+    tail_len: int = 400,  # number of past frames to show as trails
     s: int = 5,  # scatter point size
 ):
     """
@@ -46,6 +52,7 @@ def render_animation_gif(
     Try to render an MP4 (ffmpeg). If ffmpeg is unavailable, fall back to GIF (Pillow).
     """
     pos = np.asarray(positions)  # [T,N,2] as numpy
+    print(pos.shape)
     T, N, _ = pos.shape
 
     # Axis limits with a small margin
@@ -118,9 +125,7 @@ def render_animation_gif(
 
     plt.close(fig)
 
-
 # =========================================projection====================================
-
 
 def project(x: jnp.array, v: jnp.array):
     """
@@ -130,27 +135,20 @@ def project(x: jnp.array, v: jnp.array):
     """
     eps = 1e-6
     v_dir = v / (jnp.linalg.norm(v, axis=-1, keepdims=True) + eps)
-    print(v_dir)
-    x_parallel = jnp.sum(v_dir * x, axis=-1, keepdims=True) * v_dir
+    x_parallel = jnp.sum(v_dir[:,None,:] * x, axis=-1, keepdims=True) * v_dir
     x_perp = x - x_parallel
     return x_parallel, x_perp
 
-
-def npz_to_projected(npz_file_name):
+def absolute_to_projected(x: jnp.array, v: jnp.array):
     """
     takes the npz data and turns it into the x_par, x_perp, v_par, v_perp
     """
-    data = np.load(npz_file_name)
-    x = jnp.array(data["x"])
-    v = jnp.array(data["v"])
-
-    x_diff = x[:, None, :] - x[:, :, None]
-    v_diff = v[:, None, :] - v[:, :, None]
+    x_diff = x[:, None, :] - x[None, :, :]
+    v_diff = v[:, None, :] - v[None, :, :]
 
     v_par, v_perp = project(v_diff, v)
     x_par, x_perp = project(x_diff, x)
-    return x_par, x_perp, v_par, v_perp
-
+    return jnp.sum(x_par, axis=-1), jnp.sum(x_perp, axis = -1), jnp.sum(v_par, axis=-1), jnp.sum(v_perp, axis=-1)
 
 def projected_to_absolute(f_par, f_perp, v):
     """
@@ -160,19 +158,125 @@ def projected_to_absolute(f_par, f_perp, v):
     v_dir = v / (jnp.linalg.norm(v, axis=-1, keepdims=True) + eps)
     rot = jnp.array([[0, -1], [1, 0]])
     v_perp = (rot @ v_dir.T).T
-    f_pa = f_par[:, :, None] * v_dir[None, :, :]
-    f_per = f_perp[:, :, None] * v_perp[None, :, :]
-    return f_pa, f_per
+    f_pa = jnp.sum(f_par[:, :, None] * v_dir[None, :, :], axis=0)
+    f_per = jnp.sum(f_perp[:, :, None] * v_perp[None, :, :], axis=0)
+    return f_pa + f_per
 
+# ================================euler initegration====================================
 
-# =======================================end of functions===============================
+def semi_implicit_euler(x, v, a, dt):
+    v = v + a * dt
+    x = x + v * dt
+    return x, v
 
+# =======================================solve=========================================
+
+def solve(init_cond, f_par, f_perp, f_attr, dt, time):
+    """
+    takes in a function f_par, f_perp and plugs in the new things
+    """
+    x0, v0 = init_cond
+    
+    def step(carry, par, perp, dt):
+        x, v = carry
+        x_par, x_perp, v_par, v_perp = absolute_to_projected(x, v)
+        F_par = par(x_par, x_perp, v_par, v_perp)
+        F_perp = perp(x_par, x_perp, v_par, v_perp)
+
+        F_attr = f_attr(x, v)
+
+        F_tot = projected_to_absolute(F_par, F_perp, v) + F_attr
+        x_next, v_next = semi_implicit_euler(x, v, F_tot, dt)
+        return (x_next, v_next), (x_next, v_next)
+    
+    def scan_body(carry, _):
+        return step(carry, f_par, f_perp, dt)
+    
+    (xT, vT), (xs, vs) = jax.lax.scan(scan_body, (x0, v0), jnp.zeros(time))
+
+    positions = jnp.concatenate([x0[None, ...], xs], axis=0)
+    velocities = jnp.concatenate([v0[None, ...], vs], axis=0)
+    return positions, velocities
+
+#==================================attractive force==============================
+
+def f_attractive(x, v, goal, is_goal_point, p:params):
+
+    def point_attraction(x, v, goal, p):
+        eps = 1e-6
+        diff = goal - x
+        norms = jnp.linalg.norm(diff, axis=1, keepdims=True)
+        v_target = p.v_target_mag * diff / (norms+eps)
+        return (v_target - v) / p.tau
+    
+    def vel_attraction(x, v, goal, p):
+        return (goal - v) / p.tau
+    
+    point_goal = is_goal_point.astype(int)
+    vel_goal = (~is_goal_point).astype(int)
+    print(point_goal[:,None] * point_attraction(x, v, goal, p) + vel_goal[:,None] * vel_attraction(x, v, goal, p))
+
+    return point_goal[:,None] * point_attraction(x, v, goal, p) + vel_goal[:,None] * vel_attraction(x, v, goal, p)
+
+#=====================================forces======================================
+
+def f_test_par(*args):
+    return 0*jnp.ones((1,80))
+
+def f_test_perp(*args):
+    return 0*jnp.ones((1,80))
+
+#====================================exponential====================================
+
+def f_exponential_repulsion(x: jnp.ndarray,  p: params) -> jnp.ndarray:
+    N = x.shape[0]
+    diff = x[:, None, :] - x[None, :, :]      # [N, N, 2]
+    d2 = jnp.sum(diff * diff, axis=-1)        # [N, N]
+    eps = 1e-6
+    d = jnp.sqrt(d2 + eps)                    # [N, N]
+    n_ij = diff / d[..., None]                # [N, N, 2]
+    eye = jnp.eye(N, dtype=jnp.float32)
+    mag = p.A * jnp.exp((p.d0 - d) / p.B) * (1.0 - eye)
+    if p.r_cut > 0.0:
+        mag = mag * (d <= p.r_cut)
+    F = jnp.sum(mag[..., None] * n_ij, axis=1)  # [N, 2]
+    return F
+
+#==============================time_to_collision====================================
+
+def f_time_to_collision(x_par, x_perp, v_par, v_perp):
+    eps = 1e-6
+    a = jnp.sqrt(v_par * v_par + v_perp * v_perp)
+    b = jnp.sqrt(x_par * x_par + x_perp * x_perp)
+    c = (x_par * v_par + x_perp * v_perp) / ((a + eps)* (b + eps))
+    print(c)
 
 if __name__ == "__main__":
     # x,y= project(jnp.array([[[2,0],[1,0]],[[0,1],[0,3]]]), jnp.array([[0,1],[1,0]]))
-    f1 = jnp.array([[0, 2], [3, 0]])
-    f2 = jnp.array([[1, 1], [1, 1]])
-    z = jnp.array([[0, 1], [3, 4]])
-    a, b = projected_to_absolute(f1, f2, z)
-    print(f"{a=}")
-    print(f"{b=}")
+
+    crowd = np.load("oop_init.npz")
+
+    init_cond = (crowd["x"], crowd["v"])
+    x, v = init_cond
+
+    x_par, x_perp, v_par, v_perp = absolute_to_projected(x, v)
+    
+    f_time_to_collision(x_par, x_perp, v_par, v_perp)
+else:
+
+    f_attr = lambda x, v: f_attractive(x, v, crowd["goal"], crowd["is_goal"], params)
+    f_exp = lambda x, v: f_exponential_repulsion(x, params)
+
+    f_tot = lambda x, v: f_attractive(x, v, crowd["goal"], crowd["is_goal"], params) + f_exponential_repulsion(x, params)
+
+    x_new, v_new = solve(init_cond, f_test_par, f_test_perp, f_tot, 0.1, 500)
+   
+    np.savez(
+        "oop.npz",
+        x=np.asarray(x_new),
+        v=np.asarray(v_new),
+        goal=crowd["goal"],
+        color = crowd["color"]
+    )
+
+    render_animation_gif("oop.npz", 0.1, tail_len=100)

@@ -1,0 +1,7 @@
+The npz files will be saved as:
+
+["x", "v", "goal", "color"]
+
+for reading purposes and standardization.
+
+colorization is just a list of colors (dubbed iin strings) for processing in the graphical creation of a gif.

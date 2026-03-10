@@ -1,0 +1,135 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstset{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{orange},
+    frame=single,
+    showstringspaces=false
+}
+\usepackage[margin=1in]{geometry}
+
+\title{Current Model}
+\author{Grace Liu}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+Initially, we discussed having only 3 directions to describe a force equation, but this was too limited as it didn't distinguish behind or in front, and concepts that may be important for people.
+
+\section{The Model}
+
+The model we have decided on is to still use relative positions to simplify the initially 8 dimensional problem to 4 dimensions. 
+
+The variables we choose to use are the relative velocities and relative positions projected onto the velocity of the person of interest. The total force would be a sum of these pairwise interactions, all projected along the person of interests velocity. The idea is that the physical significance is going forward and turning, so projecting the velocities, positions, and splitting the forces into these functions makes sense. In essence, we have:
+\[
+\vec{F}_{par} = \sum_{i \neq j} f_\parallel(x_{perp}, x_{par}, v_{perp}, v_{par}), \vec{F}_{perp} = \sum_{i \neq j} f_\perp(x_{perp}, x_{par}, v_{perp}, v_{par})
+\]
+and the force is a sum of these. 
+
+Implementation for the simulation is a bit redundant because I have to project onto the velocity only to project back to normal coordinates and then compute the forces in Cartesian coordinates, but hopefully this will make training easier.
+
+I implemented an attractive force which made the simulations try to go to a place and try to attain a certain speed. The force was integrated twice to get the position.
+
+\newpage
+\section{Models - Normal Exponential} One example is implementing this is how I implemented the exponential model. Basically, I reconstruct distances with the given $F$ and I have this code:
+
+\begin{lstlisting}
+    def f_exponential_repulsion_par(x_par, x_perp, p_par, p_perp, p = params):
+        N = x_par.shape[0]
+        dist = jnp.sqrt(x_par * x_par + x_perp * x_perp)
+        eps = 1e-6
+        eye = jnp.eye(N, dtype=jnp.float32)
+        mag = p.A * jnp.exp((p.d0 - dist) / p.B) * (1.0 - eye)
+
+        if p.r_cut > 0.0:
+            mag = mag * (dist <= p.r_cut)
+
+        F = x_par / (dist + eps) * mag 
+        F = jnp.sum(F, axis = 0)
+        return -F
+    
+    def f_exponential_repulsion_perp(x_par, x_perp, v_par, v_perp, p= params):
+        N = x_par.shape[0]
+        dist = jnp.sqrt(x_par * x_par + x_perp * x_perp)
+        eps = 1e-6
+        eye = jnp.eye(N, dtype=jnp.float32)
+        mag = p.A * jnp.exp((p.d0 - dist)/ p.B) * (1.0 - eye)
+        if p.r_cut > 0.0:
+            mag = mag * (dist <= p.r_cut)
+        F = x_perp / (dist + eps)* mag 
+        
+        F = jnp.sum(F, axis = 0)
+        return -F
+
+\end{lstlisting}
+
+\newpage
+\section{Models - Exponential Right Biasing}
+Same as the exponential but I include a right biasing factor in the perpendicular force.
+\begin{lstlisting}
+    def exp_right_perp(x_par, x_perp, v_par, v_perp, p=params):
+        N = x_par.shape[0]
+        dist = jnp.sqrt(x_par * x_par + x_perp * x_perp)
+        eps = 1e-6
+        eye = jnp.eye(N, dtype=jnp.float32)
+        mag = p.A * jnp.exp((p.d0 - dist)/ p.B) * (1.0 - eye)
+        if p.r_cut > 0.0:
+            mag = mag * (dist <= p.r_cut)
+            F = (x_perp) / (dist + eps)* mag + p.right_a * 2 * 
+            jnp.exp(- dist ** 3 * 50 * p.right_b)
+        
+        F = jnp.sum(F, axis = 0)
+        return -F
+\end{lstlisting}
+ 
+\section{Model - Front Impacting}
+This one has an if statement checking if the parallel displacement is in front or behind, and then determining the force based on that.
+
+\begin{lstlisting}
+    def front_par(x_par, x_perp, p_par, p_perp, p = params):
+        N = x_par.shape[0]
+        mask = x_par > 0
+
+        dist = jnp.sqrt(x_par * x_par + x_perp * x_perp)
+        eps = 1e-6
+        eye = jnp.eye(N, dtype=jnp.float32)
+        mag = p.A * jnp.exp((p.d0 - dist) / p.B) * (1.0 - eye)
+
+        mag = jnp.where(mask, mag, 0)
+
+        if p.r_cut > 0.0:
+            mag = mag * (dist <= p.r_cut)
+
+        F = x_par / (dist + eps) * mag 
+        F = jnp.sum(F, axis = 0)
+        return -F
+
+    def front_perp(x_par, x_perp, v_par, v_perp, p=params):
+        N = x_par.shape[0]
+        dist = jnp.sqrt(x_par * x_par + x_perp * x_perp)
+        mask = x_par > 0
+
+        eps = 1e-6
+        eye = jnp.eye(N, dtype=jnp.float32)
+        mag = p.A * jnp.exp((p.d0 - dist)/ p.B) * (1.0 - eye)
+
+        mag = jnp.where(mask, mag, 0)
+        if p.r_cut > 0.0:
+            mag = mag * (dist <= p.r_cut)
+            F = (x_perp) / (dist + eps)* mag + p.right_a * 2 * 
+            jnp.exp(- dist ** 3 * 50 * p.right_b)
+        
+        F = jnp.sum(F, axis = 0)
+        return -F
+\end{lstlisting}
+
+And yea, that's all the models I've implemented so far. 
+\end{document}

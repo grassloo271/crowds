@@ -8,6 +8,6 @@ class people:
         self.goal = goal 
         self.is_goal = is_goal_point #determines if the goal is a point. True if is a point, false if is a velocity.
         self.enter_t=0
-        self.leave_t=0
+        self.leave_t=999
 
    

@@ -21,7 +21,7 @@ def make_crowd(population:int, start:list, start_spread: list, goal:list, goal_s
     return peoples
 
 #=====================================3 crowd case===========================
-case = 0
+case = 2
 
 if case == 0:
     start = [-20,20]
@@ -56,19 +56,19 @@ if case == 0:
 #=================================smaller 2 crowd case================================
 elif case == 1:
     start = [-10,-10]
-    start_spread = [0,0]
+    start_spread = [5,5]
     goal = [10.0, 10.0]
-    goal_spread = [0, 0]
+    goal_spread = [5, 5]
     vel = [2, 2]
-    vel_spread = [0, 0]
+    vel_spread = [1, 1]
 
 
-    b_start = [-9.5,-9.5]
-    b_start_spread = [5,0]
-    b_goal = [10.0, 10.0]
-    b_goal_spread = [0, 0]
-    b_vel = [0, 0]
-    b_vel_spread = [0, 0]
+    b_start = [10,10]
+    b_start_spread = [5,5]
+    b_goal = [-10.0, -10.0]
+    b_goal_spread = [5, 5]
+    b_vel = [-2, -2]
+    b_vel_spread = [1, 1]
 
     crowd_a = make_crowd(1, start, start_spread, goal, goal_spread, vel, vel_spread)
     crowd_b = make_crowd(1, b_start, b_start_spread, b_goal, b_goal_spread, b_vel, b_vel_spread, color="tab:red")
@@ -79,21 +79,21 @@ elif case == 2:
     start = [-10,-10]
     start_spread = [5,5]
     goal = [10.0, 10.0]
-    goal_spread = [5, 5]
+    goal_spread = [2, 2]
     vel = [2, 2]
     vel_spread = [1, 1]
 
-    b_start = [-9.5,-9.5]
+    b_start = [10,10]
     b_start_spread = [5,5]
-    b_goal = [10.0, 10.0]
-    b_goal_spread = [5, 5]
-    b_vel = [0, 0]
-    b_vel_spread = [0, 0]
+    b_goal = [-10.0, -10.0]
+    b_goal_spread = [2, 2]
+    b_vel = [-2, -2]
+    b_vel_spread = [1, 1]
 
-    crowd_a = make_crowd(10, start, start_spread, goal, goal_spread, vel, vel_spread)
-    crowd_b = make_crowd(10, b_start, b_start_spread, b_goal, b_goal_spread, b_vel, b_vel_spread, key = jax.random.PRNGKey(2), color="tab:red")
+    crowd_a = make_crowd(30, start, start_spread, goal, goal_spread, vel, vel_spread)
+    crowd_b = make_crowd(30, b_start, b_start_spread, b_goal, b_goal_spread, b_vel, b_vel_spread, key = jax.random.PRNGKey(2), color="tab:red")
     crowd = crowd_a + crowd_b
-    name = "front_verification"
+    name = "training_data"
 
 
 

@@ -1,48 +1,45 @@
 import numpy as np
-
-file = "data/SCENARIO_1_SESSION_1_TRIAL_1.npz"
+file = "data/SCENARIO_2_SESSION_2_TRIAL_5.npz"
 data = np.load(file)
 
-colors = np.array(["tab:blue"]*data["positions"].shape[1])
+def find_first_not(arr, thing):
+    for ind, val in enumerate(arr):
+        if val != thing:
+            return ind
 
-# np.savez(
-#     "s11.npz",
-#     x=data["positions"],
-#     color=colors
-# )
+def find_last_not(arr, thing):
+    for ind, val in enumerate(reversed(arr)):
+        if val != thing:
+            return len(arr) - ind
 
 def init_condition_scenario_1(data):
     position = data["positions"]
     velocity = data["velocities"]
     orientation = data["orientations"]
     T, N, _ = position.shape
-
-
     people_init = []
     velocity_init = []
-
     goal = []
     goal_pt = []
     is_goal = []
-    is_goal_pt=[]
-
+    is_goal_pt = []
     entry_t = []
     leave_t = []
     color = []
     
     for person in range(N):
-        n = 0
-        while position[n, person, 0] > 900:
-            n += 1
-        entry_t.append(n)
-        people_init.append(position[n, person, :])
-        velocity_init.append(velocity[n, person, :])
-        while (position[n, person, 0] < 400 or n < 50) and n < T-1:
-            n += 1
-        goal_pt.append(position[n-1, person, :])
-        leave_t.append(n+1)
+        # Find entry: first valid position
+        first = find_first_not(position[:, person, 0], 999)
+        entry_t.append(first)
+        people_init.append(position[first, person, :])
+        velocity_init.append(velocity[first, person, :])
 
-        #point oriented
+        # Find leave: last valid position
+        last = find_last_not(position[:, person, 0], 999)
+        leave_t.append(last)
+        goal_pt.append(position[last - 1, person, :])
+
+        # Point oriented
         if sum(orientation[:, person][orientation[:, person] < 900]) > 0:
             goal.append([0, 1000])
             color.append("tab:green")
@@ -56,14 +53,14 @@ def init_condition_scenario_1(data):
     return people_init, velocity_init, goal, is_goal, entry_t, color, goal_pt, is_goal_pt, leave_t
 
 a, b, _, _, e, f, c, d, g = init_condition_scenario_1(data)
-print(g)
+print(c)
 np.savez(
-    "s11_init.npz",
+    "s225_init.npz",
     x=a,
     v=b,
     goal=c,
-    is_goal=d, 
+    is_goal=d,
     enter_t=e,
     color=f,
-    leave_t = g
+    leave_t=g
 )

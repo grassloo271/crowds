@@ -11,8 +11,14 @@ class params:
     v_target_mag = 1
     # v_target_mag = .8 # exponential normal
     A: float = 0.5
+    A_par = 0.6
+    A_perp = 0.8
     B: float = 0.5
+    B_par = 0.6
+    B_perp = 0.8
     d0: float = 0.3
+    d0_par = 0.4
+    d0_perp = 0.7
     r_cut = 5
     right_a = 0.1
     right_b = 0.1
@@ -64,8 +70,8 @@ def people_to_npz(crowd, name):
     Takes a list of people that you want to do something and
     puts them in a npz fiile for easier reading later on
     """
-    gen_arr = [(ppl.x, ppl.v, ppl.color, ppl.goal, ppl.is_goal, ppl.enter_t) for ppl in crowd]
-    x, v, color, goal, is_goal, enter_t = zip(*gen_arr)
+    gen_arr = [(ppl.x, ppl.v, ppl.color, ppl.goal, ppl.is_goal, ppl.enter_t, ppl.leave_t) for ppl in crowd]
+    x, v, color, goal, is_goal, enter_t, leave_t = zip(*gen_arr)
     np.savez(
         name,
         x=np.asarray(x),
@@ -73,7 +79,8 @@ def people_to_npz(crowd, name):
         goal=np.asarray(goal),
         is_goal = np.asarray(is_goal),
         color=np.asarray(color),
-        enter_t = np.asarray(enter_t)
+        enter_t = np.asarray(enter_t),
+        leave_t = np.asarray(leave_t)
     )
 # ====================================rendering data==================================
 
@@ -352,7 +359,7 @@ def f_exponential_repulsion_par(x_par, x_perp, p_par, p_perp, p = params):
     dist = jnp.sqrt(x_par * x_par + x_perp * x_perp)
     eps = 1e-6
     eye = jnp.eye(N, dtype=jnp.float32)
-    mag = p.A * jnp.exp((p.d0 - dist) / p.B) * (1.0 - eye)
+    mag = p.A_par * jnp.exp((p.d0_par - dist) / p.B_par) * (1.0 - eye)
 
     if p.r_cut > 0.0:
         mag = mag * (dist <= p.r_cut)
@@ -366,7 +373,7 @@ def f_exponential_repulsion_perp(x_par, x_perp, v_par, v_perp, p= params):
     dist = jnp.sqrt(x_par * x_par + x_perp * x_perp)
     eps = 1e-6
     eye = jnp.eye(N, dtype=jnp.float32)
-    mag = p.A * jnp.exp((p.d0 - dist)/ p.B) * (1.0 - eye)
+    mag = p.A_perp * jnp.exp((p.d0_perp - dist)/ p.B_perp) * (1.0 - eye)
     if p.r_cut > 0.0:
         mag = mag * (dist <= p.r_cut)
     F = x_perp / (dist + eps)* mag 
@@ -435,7 +442,7 @@ def f_time_to_collision(x_par, x_perp, v_par, v_perp):
     c = (x_par * v_par + x_perp * v_perp) / ((a + eps)* (b + eps))
 
 if __name__ == "__main__":
-    case = 1
+    case =1
     if case == 0:
         x,y= project(jnp.array([[[2,0],[1,0]],[[0,1],[0,3]]]), jnp.array([[0,1],[1,0]]))
         y = jnp.stack((jnp.arange(3),jnp.arange(3)), axis=-1)
@@ -448,7 +455,7 @@ if __name__ == "__main__":
         f_exponential_repulsion_par(x_par, x_perp, v_par, v_perp)
         print(projected_to_absolute(jnp.array([2,5]), jnp.array([1,1]), jnp.array([2,3])))
     elif case == 1:
-        name = "s11_init"
+        name = "training_data"
         crowd = np.load(name + ".npz")
 
         init_cond = (crowd["x"], crowd["v"])
@@ -466,7 +473,7 @@ if __name__ == "__main__":
         # f_tot = lambda x, v: 0
         # x_new,v_new = solve(init_cond, f_test_par, f_test_perp, f_tot, 0.1, 100)
         print("here") 
-        x_new, v_new = solve_for(init_cond, f_exponential_repulsion_par, f_exponential_repulsion_perp, 0.1, 160, enter_t=crowd["enter_t"], leave_t = crowd["leave_t"], f_attr = f_attr)
+        x_new, v_new = solve_for(init_cond, f_exponential_repulsion_par, f_exponential_repulsion_perp, 0.1, 200, enter_t=crowd["enter_t"], leave_t = crowd["leave_t"], f_attr = f_attr)
         # x_new, v_new = solve_for(init_cond, f_exponential_repulsion_par, exp_right_perp, 0.1, 100, f_attr)
         # x_new, v_new = solve_for(init_cond, f_exponential_repulsion_par, f_exponential_repulsion_perp, 0.1, 100, f_attr)
         
@@ -481,7 +488,7 @@ if __name__ == "__main__":
 # 
         # overlay_npz("s11.npz", "s11_init_run_front.npz", "combined_front.npz")
         # render_animation_gif("combined_front.npz", dt=0.1, tail_len=2)    
-        render_animation_gif(save_name, 0.1, enter_t=crowd["enter_t"], tail_len=160)
+        render_animation_gif(save_name, 0.1, enter_t=crowd["enter_t"], tail_len=60)
     elif case == 2:
         x_0 = jnp.array([[0.0,0],[10.0,9]]) 
         v_0 = jnp.array([[1,1],[-1.0,-1]])
@@ -501,7 +508,7 @@ if __name__ == "__main__":
         )
         render_animation_gif(name, dt=1)
     elif case ==3:
-        overlay_npz("s11.npz", "s11_init_run.npz", "combined.npz")
-        render_animation_gif("combined.npz", dt=0.1, enter_t=0, tail_len=2)    
+        # overlay_npz("s11_filt.npz", "s11_init_run.npz", "combined.npz")
+        render_animation_gif("filt225.npz", dt=0.1, enter_t=0, tail_len=20)    
 
     

@@ -40,7 +40,7 @@ for i in range(N):
 
 positions_filtered = np.stack(pos_filtered, axis=1)
 
-output_filename = "filt225.npz"
+output_filename = "scen_2.npz"
 
 save_dict = {key: data[key] for key in data.files}
 save_dict["x"] = positions_filtered

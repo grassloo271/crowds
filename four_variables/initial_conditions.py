@@ -91,9 +91,9 @@ elif case == 2:
     b_vel_spread = [1, 1]
 
     crowd_a = make_crowd(30, start, start_spread, goal, goal_spread, vel, vel_spread)
-    crowd_b = make_crowd(30, b_start, b_start_spread, b_goal, b_goal_spread, b_vel, b_vel_spread, key = jax.random.PRNGKey(2), color="tab:red")
+    crowd_b = make_crowd(30, b_start, b_start_spread, b_goal, b_goal_spread, b_vel, b_vel_spread, key = jax.random.PRNGKey(5), color="tab:red")
     crowd = crowd_a + crowd_b
-    name = "training_data"
+    name = "training"
 
 
 

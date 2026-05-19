@@ -83,9 +83,9 @@ elif case == 2:
     vel = [2, 2]
     vel_spread = [1, 1]
 
-    b_start = [10,10]
+    b_start = [-10,10]
     b_start_spread = [5,5]
-    b_goal = [-10.0, -10.0]
+    b_goal = [10.0, -10.0]
     b_goal_spread = [2, 2]
     b_vel = [-2, -2]
     b_vel_spread = [1, 1]
@@ -93,7 +93,7 @@ elif case == 2:
     crowd_a = make_crowd(30, start, start_spread, goal, goal_spread, vel, vel_spread)
     crowd_b = make_crowd(30, b_start, b_start_spread, b_goal, b_goal_spread, b_vel, b_vel_spread, key = jax.random.PRNGKey(5), color="tab:red")
     crowd = crowd_a + crowd_b
-    name = "training"
+    name = "perp"
 
 
 
